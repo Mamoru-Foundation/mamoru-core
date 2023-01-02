@@ -13,6 +13,8 @@ jobs:
           token: ${{ secrets.MAMORU_ACCESS_TOKEN }}
 
       - uses: ./.github/actions/install-deps
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Run linting
         run: |
           cargo fmt -- --check
@@ -27,6 +29,8 @@ jobs:
           token: ${{ secrets.MAMORU_ACCESS_TOKEN }}
 
       - uses: ./.github/actions/install-deps
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Build
         run: cargo build --verbose
 
@@ -39,6 +43,8 @@ jobs:
           token: ${{ secrets.MAMORU_ACCESS_TOKEN }}
 
       - uses: ./.github/actions/install-deps
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Run tests
         run: make test
 
@@ -84,6 +90,8 @@ jobs:
           submodules: true
           token: ${{ secrets.MAMORU_ACCESS_TOKEN }}
       - uses: ./.github/actions/install-deps
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Run tests
         run: |
           make validation-chain-test
@@ -97,6 +105,8 @@ jobs:
           token: ${{ secrets.MAMORU_ACCESS_TOKEN }}
 
       - uses: ./.github/actions/install-deps
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Install cargo-llvm-cov
         run: cargo install cargo-llvm-cov --quiet
       - name: Generate code coverage
