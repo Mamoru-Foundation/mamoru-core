@@ -1,7 +1,7 @@
 use mamoru_core::Rule;
 
-mod udf;
 mod smoke;
+mod udf;
 
 pub fn active_rule(expression: impl AsRef<str>) -> Rule {
     Rule::new("dummy".to_string(), 0, i64::MAX, expression.as_ref())
