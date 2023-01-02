@@ -1,3 +1,4 @@
+use std::error::Error;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -25,4 +26,13 @@ pub enum DataError {
 
     #[error("We only support SELECT statements. Queries like INSERT, CREATE TABLE, etc are not allowed.")]
     UnsupportedStatement,
+}
+
+#[derive(Error, Debug)]
+pub enum ValueError {
+    #[error("Failed to serialize the value.")]
+    Serialize(Box<dyn Error>),
+
+    #[error("Failed to deserialize the value.")]
+    Deserialize(Box<dyn Error>),
 }

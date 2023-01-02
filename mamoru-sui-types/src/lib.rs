@@ -14,9 +14,8 @@ pub fn all_tables() -> Result<Vec<TableDef>, ArrowError> {
     tables![
         Transaction,
         CallTrace,
-        CallTraceArgType,
-        CallTraceArgValue,
         CallTraceTypeArg,
+        CallTraceArg,
         MoveEvent,
         PublishEvent,
         CoinBalanceChangeEvent,

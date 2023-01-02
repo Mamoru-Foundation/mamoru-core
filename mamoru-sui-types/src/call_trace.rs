@@ -1,5 +1,6 @@
 use blockchain_data_macro::BlockchainData;
 use datafusion::arrow::datatypes::DataType;
+use mamoru_core::ValueData;
 
 #[derive(BlockchainData)]
 #[schema(table_name = "call_traces")]
@@ -35,13 +36,13 @@ pub struct CallTraceTypeArg {
     #[schema(type = "DataType::UInt64")]
     pub call_trace_seq: u64,
 
-    #[schema(type = "DataType::Binary")]
-    pub arg: Vec<u8>,
+    #[schema(type = "DataType::Utf8")]
+    pub arg: String,
 }
 
 #[derive(BlockchainData)]
-#[schema(table_name = "call_trace_arg_types")]
-pub struct CallTraceArgType {
+#[schema(table_name = "call_trace_args")]
+pub struct CallTraceArg {
     #[schema(type = "DataType::UInt64")]
     pub seq: u64,
 
@@ -49,18 +50,5 @@ pub struct CallTraceArgType {
     pub call_trace_seq: u64,
 
     #[schema(type = "DataType::Binary")]
-    pub arg: Vec<u8>,
-}
-
-#[derive(BlockchainData)]
-#[schema(table_name = "call_trace_arg_values")]
-pub struct CallTraceArgValue {
-    #[schema(type = "DataType::UInt64")]
-    pub seq: u64,
-
-    #[schema(type = "DataType::UInt64")]
-    pub call_trace_seq: u64,
-
-    #[schema(type = "DataType::Binary")]
-    pub arg: Vec<u8>,
+    pub arg: ValueData,
 }

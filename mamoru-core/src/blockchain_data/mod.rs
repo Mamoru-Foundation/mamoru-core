@@ -1,3 +1,6 @@
+mod udf;
+pub mod value;
+
 use crate::DataError;
 use chrono::NaiveDateTime;
 use datafusion::arrow::datatypes::Schema;
@@ -36,7 +39,7 @@ pub type TableDef = (&'static str, RecordBatch);
 impl BlockchainDataCtxBuilder {
     pub fn new() -> Self {
         Self {
-            session: SessionContext::new(),
+            session: setup_session(),
         }
     }
 
@@ -106,4 +109,15 @@ impl BlockchainDataCtx {
     pub(crate) fn session(&self) -> &SessionContext {
         &self.session
     }
+}
+
+fn setup_session() -> SessionContext {
+    let mut session = SessionContext::new();
+
+    session.register_udf(udf::as_boolean());
+    session.register_udf(udf::as_uint64());
+    session.register_udf(udf::as_string());
+    session.register_udf(udf::struct_field());
+
+    session
 }

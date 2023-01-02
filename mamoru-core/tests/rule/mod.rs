@@ -1,5 +1,6 @@
 use mamoru_core::Rule;
 
+mod udf;
 mod smoke;
 
 pub fn active_rule(expression: impl AsRef<str>) -> Rule {
