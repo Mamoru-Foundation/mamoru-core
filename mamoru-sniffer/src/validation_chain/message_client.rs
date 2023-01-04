@@ -88,7 +88,7 @@ pub struct MessageClient {
 }
 
 impl MessageClient {
-    /// Connect the the Validation Chain.
+    /// Connects to the Validation Chain.
     /// Call [`MessageClientConfig::from_env`] to create `config` parameter from environment variables
     pub async fn connect(config: MessageClientConfig) -> ClientResult<Self> {
         let service_client =

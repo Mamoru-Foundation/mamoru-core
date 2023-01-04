@@ -62,7 +62,7 @@ pub struct QueryClient {
 }
 
 impl QueryClient {
-    /// Connect the the Validation Chain.
+    /// Connects to the Validation Chain.
     /// Call [`QueryClientConfig::from_env`] to create `config` parameter from environment variables
     pub async fn connect(config: QueryClientConfig) -> ClientResult<Self> {
         Ok(Self {
