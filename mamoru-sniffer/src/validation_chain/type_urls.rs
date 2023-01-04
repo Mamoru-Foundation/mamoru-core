@@ -1,6 +1,6 @@
 /// Required to sign a transaction for each message type
 use crate::validation_chain::proto::validation_chain::{
-    MsgRegisterSniffer, MsgReportIncident, MsgSubscribeRules, MsgUnregisterSniffer,
+    MsgRegisterRule, MsgRegisterSniffer, MsgReportIncident, MsgSubscribeRules, MsgUnregisterSniffer,
 };
 use cosmrs::proto::traits::TypeUrl;
 
@@ -18,4 +18,8 @@ impl TypeUrl for MsgSubscribeRules {
 
 impl TypeUrl for MsgReportIncident {
     const TYPE_URL: &'static str = "/validationchain.validationchain.MsgReportIncident";
+}
+
+impl TypeUrl for MsgRegisterRule {
+    const TYPE_URL: &'static str = "/validationchain.validationchain.MsgRegisterRule";
 }

@@ -7,9 +7,14 @@ use crate::validation_chain::{
 use futures::TryStreamExt;
 use mamoru_core::{BlockchainDataCtx, Rule};
 use serde::Deserialize;
-use std::fmt::{Debug, Formatter};
+use std::ops::Add;
 use std::sync::Arc;
-use tracing::{debug, error, info};
+use std::time::Duration;
+use tokio::sync::mpsc::error::TrySendError;
+use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::sync::RwLock;
+use tokio::time::Instant;
+use tracing::{debug, error, info, warn};
 
 #[derive(Deserialize)]
 pub struct SnifferConfig {
@@ -20,79 +25,224 @@ pub struct SnifferConfig {
     pub query_config: QueryClientConfig,
 
     pub chain_type: ChainType,
+
+    #[serde(default = "SnifferConfig::default_incident_buffer_size")]
+    pub incident_buffer_size: usize,
+
+    #[serde(default = "SnifferConfig::default_rules_update_interval_secs")]
+    pub rules_update_interval_secs: u64,
 }
 
 impl SnifferConfig {
     pub fn from_env() -> Self {
         from_env()
     }
+
+    pub fn default_incident_buffer_size() -> usize {
+        256
+    }
+
+    pub fn default_rules_update_interval_secs() -> u64 {
+        120
+    }
 }
 
 type SnifferResult<T> = Result<T, SnifferError>;
 
-impl Debug for Sniffer {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!(
-            "Sniffer {{chain_type = {}}}",
-            self.chain_type.as_str_name()
-        ))?;
-
-        Ok(())
-    }
-}
-
 /// Defines an API for Rule matching and incident reporting.
 pub struct Sniffer {
-    message_client: MessageClient,
-    query_client: QueryClient,
-    chain_type: ChainType,
-    rules: Arc<Vec<Rule>>,
+    report_tx: Sender<IncidentReport>,
+    rules: Arc<RwLock<Vec<Rule>>>,
 }
 
 impl Sniffer {
-    /// Bootstrap new [`Sniffer`] instance.
+    /// Bootstraps new [`Sniffer`] instance.
     /// Call [`SnifferConfig::from_env`] to create `config` parameter from environment variables.
     pub async fn new(config: SnifferConfig) -> SnifferResult<Self> {
-        let message_client = MessageClient::connect(config.message_config).await?;
-        let query_client = QueryClient::connect(config.query_config).await?;
-        let chain_type = config.chain_type;
+        let rules = Arc::new(RwLock::new(vec![]));
+        let (report_tx, report_rx) = tokio::sync::mpsc::channel(config.incident_buffer_size);
 
-        Ok(Self {
+        let bg_task = SnifferBgTask::new(
+            MessageClient::connect(config.message_config).await?,
+            QueryClient::connect(config.query_config).await?,
+            Arc::clone(&rules),
+            config.chain_type,
+            report_rx,
+            Duration::from_secs(config.rules_update_interval_secs),
+        )
+        .await?;
+
+        tokio::spawn(async move { bg_task.run().await });
+
+        Ok(Self { report_tx, rules })
+    }
+
+    /// Reports to Validation Chain if the provided transaction matches
+    /// any rule from the internal storage.
+    #[tracing::instrument(skip(ctx, self), fields(tx_id = ctx.tx_id(), tx_hash = ctx.tx_hash(), level = "debug"))]
+    pub async fn observe_data(&self, ctx: BlockchainDataCtx) -> SnifferResult<()> {
+        let matched_rule_ids = self.check_incidents(&ctx).await;
+        debug!(len = matched_rule_ids.len(), "Matched rules");
+
+        for rule_id in matched_rule_ids {
+            let sent = self.report_tx.try_send(IncidentReport {
+                rule_id,
+                source: IncidentSource::Transaction {
+                    block: None,
+                    transaction: TransactionId {
+                        tx_id: ctx.tx_id().to_string(),
+                        hash: ctx.tx_hash().to_string(),
+                    },
+                },
+            });
+
+            match sent {
+                Ok(_) => {}
+                Err(TrySendError::Full(_)) => {
+                    error!("Reports channel is full. It may happen because of an event spike or incident reporting is stuck.");
+
+                    continue;
+                }
+
+                Err(TrySendError::Closed(_)) => {
+                    // This is non-recoverable error, we should panic here.
+                    panic!("Reports channel is closed.");
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Checks for matches for each of rules available.
+    /// Returns a list of Rule ids.
+    /// This method doesn't fail as we don't want to break all of our pipeline
+    /// because of a single invalid rule.
+    #[tracing::instrument(skip(ctx, self), fields(tx_id = ctx.tx_id(), tx_hash = ctx.tx_hash(), level = "info"))]
+    async fn check_incidents(&self, ctx: &BlockchainDataCtx) -> Vec<String> {
+        let results = {
+            let rules = self.rules.read().await;
+            let futures: Vec<_> = rules
+                .iter()
+                .map(|rule| async { (rule.verify(ctx).await, rule.id()) })
+                .collect();
+
+            futures::future::join_all(futures).await
+        };
+
+        results
+            .into_iter()
+            .filter_map(|(result, rule_id)| match result {
+                Ok(ctx) => {
+                    if ctx.matched {
+                        info!(%rule_id, "Rule is matched");
+                        Some(rule_id)
+                    } else {
+                        debug!(%rule_id, "Rule is NOT matched");
+                        None
+                    }
+                }
+                Err(err) => {
+                    error!(?err, "Failed to verify rule, skipping...");
+                    None
+                }
+            })
+            .collect()
+    }
+}
+
+/// An entity to perform slow IO-bound tasks
+/// to avoid blocking transaction execution in a blockchain.
+struct SnifferBgTask {
+    message_client: MessageClient,
+    query_client: QueryClient,
+    rules: Arc<RwLock<Vec<Rule>>>,
+    chain_type: ChainType,
+    report_rx: Receiver<IncidentReport>,
+    rules_update_interval: Duration,
+}
+
+impl SnifferBgTask {
+    pub(crate) async fn new(
+        message_client: MessageClient,
+        query_client: QueryClient,
+        rules: Arc<RwLock<Vec<Rule>>>,
+        chain_type: ChainType,
+        report_rx: Receiver<IncidentReport>,
+        rules_update_interval: Duration,
+    ) -> SnifferResult<Self> {
+        message_client.register_sniffer(chain_type).await?;
+
+        let task = Self {
             message_client,
             query_client,
+            rules,
             chain_type,
-            rules: Arc::new(vec![]),
-        })
+            report_rx,
+            rules_update_interval,
+        };
+
+        task.update_rules().await?;
+
+        Ok(task)
     }
 
-    /// Registers the sniffer on Validation Chain.
-    /// Must be called before posting any other data.
-    #[tracing::instrument(err)]
-    pub async fn register(&mut self) -> SnifferResult<()> {
-        debug!(chain_type = self.chain_type.as_str_name());
+    /// This job:
+    /// - updates rules list
+    /// - reports incidents received via `report_rx`
+    ///
+    /// Stops when incidents channel `report_rx` is dropped.
+    pub(crate) async fn run(mut self) {
+        debug!(
+            chain_type = self.chain_type.as_str_name(),
+            "Starting sniffer background task"
+        );
 
-        self.message_client
-            .register_sniffer(self.chain_type)
-            .await?;
+        let mut rules_interval = tokio::time::interval_at(
+            Instant::now().add(self.rules_update_interval),
+            self.rules_update_interval,
+        );
 
-        Ok(())
-    }
+        loop {
+            tokio::select! {
+                // it's time to update rules
+                _ = rules_interval.tick() => {
+                    if let Err(err) = self.update_rules().await {
+                        error!(error = ?err, "Failed to update rules.")
+                    }
+                }
 
-    /// Unregisters the sniffer on Validation Chain.
-    /// Must be called before shutting down the sniffer node.
-    #[tracing::instrument(err)]
-    pub async fn unregister(&self) -> SnifferResult<()> {
-        self.message_client.unregister_sniffer().await?;
+                // received an update from `report_rx`
+                message = self.report_rx.recv() => {
+                    match message {
+                        Some(report) => {
+                            debug!(?report, "Reporting an incident...");
 
-        Ok(())
+                            if let Err(err) = self.message_client.report_incidents(vec![report]).await {
+                                error!(error = ?err, "Failed to report an incident")
+                            }
+                        }
+                        None => {
+                            warn!("Reports channel is closed. Stopping the job...");
+
+                            if let Err(err) = self.message_client.unregister_sniffer().await {
+                                 error!(error = ?err, "Failed to unregister sniffer")
+                            }
+
+                            return;
+                        }
+                    }
+
+                }
+            }
+        }
     }
 
     /// Updates internal rule storage with rules from Validation Chain.
     /// Notifies Validation Chain that the sniffer is now subscribed to the new rules.
     /// Must be called periodically to ensure the sniffer work on relevant rules.
     /// Emits a log message if some rule is failed to parse.
-    #[tracing::instrument(err)]
-    pub async fn update_rules(&mut self) -> SnifferResult<()> {
+    async fn update_rules(&self) -> SnifferResult<()> {
         let rule_response: Vec<RuleQueryResponseDto> = self
             .query_client
             .list_rules(self.chain_type)
@@ -101,7 +251,7 @@ impl Sniffer {
 
         debug!(len = rule_response.len(), "Received rules");
 
-        let rules: Vec<Rule> = rule_response
+        let new_rules: Vec<Rule> = rule_response
             .into_iter()
             .filter_map(|rule| {
                 let rule_id = rule.rule_id.clone();
@@ -117,77 +267,18 @@ impl Sniffer {
             })
             .collect();
 
-        debug!(len = rules.len(), "Parsed rules");
+        debug!(len = new_rules.len(), "Parsed rules");
 
         self.message_client
-            .subscribe_rules(rules.iter().map(|rule| rule.id()).collect())
+            .subscribe_rules(new_rules.iter().map(|rule| rule.id()).collect())
             .await?;
 
-        self.rules = Arc::new(rules);
+        {
+            let mut rules_guard = self.rules.write().await;
 
-        Ok(())
-    }
-
-    /// Reports to Validation Chain if the provided transaction matches
-    /// any rule from the internal storage.
-    #[tracing::instrument(skip(ctx), fields(tx_id = ctx.tx_id(), tx_hash = ctx.tx_hash(), level = "debug"))]
-    pub async fn observe_data(&self, ctx: BlockchainDataCtx) -> SnifferResult<()> {
-        let matched_rule_ids = self.check_incidents(&ctx).await;
-
-        let incidents: Vec<_> = matched_rule_ids
-            .into_iter()
-            .map(|rule_id| IncidentReport {
-                rule_id,
-                source: IncidentSource::Transaction {
-                    block: None,
-                    transaction: TransactionId {
-                        tx_id: ctx.tx_id().to_string(),
-                        hash: ctx.tx_hash().to_string(),
-                    },
-                },
-            })
-            .collect();
-
-        debug!(len = incidents.len(), "Matched rules");
-
-        if !incidents.is_empty() {
-            debug!(tx_hash = ctx.tx_hash(), "Reporting...");
-            self.message_client.report_incidents(incidents).await?;
+            *rules_guard = new_rules;
         }
 
         Ok(())
-    }
-
-    /// Checks for matches for each of rules available.
-    /// Returns a list of Rule ids.
-    /// This method doesn't fail as we don't want to break all of our pipeline
-    /// because of a single invalid rule.
-    #[tracing::instrument(skip(ctx), fields(tx_id = ctx.tx_id(), tx_hash = ctx.tx_hash(), level = "info"))]
-    async fn check_incidents(&self, ctx: &BlockchainDataCtx) -> Vec<String> {
-        let rules = &self.rules;
-        let futures: Vec<_> = rules.iter().map(|rule| rule.verify(ctx)).collect();
-
-        futures::future::join_all(futures)
-            .await
-            .into_iter()
-            .zip(rules.iter())
-            .filter_map(|(result, rule)| match result {
-                Ok(ctx) => {
-                    debug!(rule_id = rule.id(), "Rule is verified");
-
-                    if ctx.matched {
-                        info!("Rule is matched");
-                        Some(rule.id())
-                    } else {
-                        debug!("Rule is NOT matched");
-                        None
-                    }
-                }
-                Err(err) => {
-                    error!(?err, "Failed to verify rule, skipping...");
-                    None
-                }
-            })
-            .collect()
     }
 }

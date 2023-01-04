@@ -7,7 +7,7 @@ use test_log::test;
 #[test(tokio::test)]
 async fn simple_query_matches() -> Result<(), DataError> {
     let ctx = data_ctx("DUMMY_HASH");
-    let rule = active_rule("SELECT t.seq FROM transactions t WHERE t.hash = 'DUMMY_HASH'");
+    let rule = active_rule("SELECT t.seq FROM transactions t WHERE t.digest = 'DUMMY_HASH'");
 
     let data = rule.verify(&ctx).await?;
 

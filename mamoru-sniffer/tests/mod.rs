@@ -1,1 +1,1 @@
-mod validation_chain;
+mod validation_chain_tests;

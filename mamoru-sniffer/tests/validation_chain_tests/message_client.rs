@@ -1,4 +1,5 @@
-use crate::validation_chain::message_client;
+use crate::validation_chain_tests::message_client;
+use chrono::Utc;
 use mamoru_sniffer::validation_chain::{
     BlockId, ChainType, IncidentReport, IncidentSource, TransactionId,
 };
@@ -14,6 +15,19 @@ async fn smoke() {
         .register_sniffer(ChainType::SuiDevnet)
         .await
         .expect("Register sniffer error");
+
+    for rule_id in rule_ids.iter() {
+        client
+            .register_rule(
+                rule_id.as_str(),
+                ChainType::SuiDevnet,
+                "SELECT * FROM transactions",
+                Utc::now(),
+                Utc::now(),
+            )
+            .await
+            .expect("Register rule error.")
+    }
 
     client
         .subscribe_rules(rule_ids.clone())

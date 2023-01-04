@@ -1,9 +1,10 @@
 use cosmrs::crypto::{secp256k1, PublicKey};
 use cosmrs::{AccountId, Coin};
 use mamoru_sniffer::validation_chain::{
-    AccountConfig, ConnectionConfig, MessageClient, MessageClientConfig, QueryClient,
+    AccountConfig, ChainType, ConnectionConfig, MessageClient, MessageClientConfig, QueryClient,
     QueryClientConfig,
 };
+use mamoru_sniffer::{Sniffer, SnifferConfig};
 use serde::Serialize;
 use std::error::Error;
 
@@ -76,22 +77,42 @@ fn coin(amount: u128) -> Coin {
     }
 }
 
-async fn message_client() -> MessageClient {
-    let TestAccount { key } = TestAccount::with_faucet().await;
-
-    MessageClient::connect(MessageClientConfig {
-        connection: ConnectionConfig::from_env(),
-        chain: Default::default(),
-        account: AccountConfig::new(key),
+async fn sniffer(chain_type: ChainType) -> Sniffer {
+    Sniffer::new(SnifferConfig {
+        message_config: message_client_config().await,
+        query_config: query_client_config(),
+        chain_type,
+        incident_buffer_size: SnifferConfig::default_incident_buffer_size(),
+        rules_update_interval_secs: SnifferConfig::default_rules_update_interval_secs(),
     })
     .await
-    .expect("Connection error")
+    .expect("Failed to create Sniffer")
 }
 
 async fn query_client() -> QueryClient {
-    QueryClient::connect(QueryClientConfig {
+    QueryClient::connect(query_client_config())
+        .await
+        .expect("QueryClient::connect error.")
+}
+
+async fn message_client() -> MessageClient {
+    MessageClient::connect(message_client_config().await)
+        .await
+        .expect("MessageClient::connect error.")
+}
+
+fn query_client_config() -> QueryClientConfig {
+    QueryClientConfig {
         connection: ConnectionConfig::from_env(),
-    })
-    .await
-    .expect("Connection error")
+    }
+}
+
+async fn message_client_config() -> MessageClientConfig {
+    let TestAccount { key } = TestAccount::with_faucet().await;
+
+    MessageClientConfig {
+        connection: ConnectionConfig::from_env(),
+        chain: Default::default(),
+        account: AccountConfig::new(key),
+    }
 }

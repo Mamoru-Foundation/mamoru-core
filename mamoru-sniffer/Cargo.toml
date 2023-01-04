@@ -33,8 +33,9 @@ tonic-build = "0.8"
 [dev-dependencies]
 env_logger = "0.10.0"
 mamoru-core = { path = "../mamoru-core", features = ["test_data"] }
+rand = "0.8.5"
 reqwest = { version = "0.11", features = ["json"] }
 serde_json = "1.0"
 test-log = { version = "0.2.11", features = ["trace"] }
-tokio = { workspace = true }
+tokio-retry = "0.3.0"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["env-filter", "fmt"] }

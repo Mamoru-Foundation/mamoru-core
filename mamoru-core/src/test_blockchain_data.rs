@@ -14,7 +14,7 @@ pub fn data_ctx(tx_hash: impl Into<String>) -> BlockchainDataCtx {
         .add_data(TestTransactionBatch::new(vec![TestTransaction {
             seq: tx_seq,
             time: now.timestamp(),
-            hash: digest.clone(),
+            digest: digest.clone(),
             gas_used: 42_000,
         }]))
         .unwrap();
@@ -71,7 +71,7 @@ pub struct TestTransaction {
     pub seq: u64,
 
     #[schema(type = "DataType::Utf8")]
-    pub hash: String,
+    pub digest: String,
 
     #[schema(type = "DataType::Timestamp(TimeUnit::Second, None)")]
     pub time: i64,

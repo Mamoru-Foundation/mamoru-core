@@ -10,11 +10,13 @@ use crate::validation_chain::proto::cosmos::tx::v1beta1::service_client::Service
 use crate::validation_chain::proto::cosmos::tx::v1beta1::{BroadcastMode, BroadcastTxRequest};
 use crate::validation_chain::proto::validation_chain::source::SourceType;
 use crate::validation_chain::proto::validation_chain::{
-    Chain, IncidentReportCommandRequestDto, MsgRegisterSniffer, MsgReportIncident,
-    MsgSubscribeRules, MsgUnregisterSniffer, RulesSubscribeCommandRequestDto,
-    SnifferRegisterCommandRequestDto, SnifferUnregisterCommandRequestDto, Source,
+    Chain, IncidentReportCommandRequestDto, MsgRegisterRule, MsgRegisterSniffer, MsgReportIncident,
+    MsgSubscribeRules, MsgUnregisterSniffer, RuleRegisterCommandRequestDto,
+    RulesSubscribeCommandRequestDto, SnifferRegisterCommandRequestDto,
+    SnifferUnregisterCommandRequestDto, Source,
 };
 use crate::validation_chain::ClientResult;
+use chrono::Utc;
 use cosmrs::proto::traits::TypeUrl;
 use cosmrs::tx::{
     AccountNumber, Body, BodyBuilder, Fee, MessageExt, SequenceNumber, SignDoc, SignerInfo,
@@ -29,12 +31,14 @@ use tracing::error;
 const MAX_RETRIES: usize = 5;
 const RETRY_SLEEP_TIME: Duration = Duration::from_millis(100);
 
+#[derive(Debug)]
 pub struct IncidentReport {
     pub rule_id: String,
     pub source: IncidentSource,
 }
 
 /// Safer wrapper over part of [`IncidentReportCommandRequestDto`]
+#[derive(Debug)]
 pub enum IncidentSource {
     Mempool,
     Transaction {
@@ -55,7 +59,7 @@ struct AccountDataCache {
 impl AccountDataCache {
     /// Loads [`Self`] via Cosmos API
     async fn fetch(
-        query_client: &mut CosmosQueryClient<tonic::transport::Channel>,
+        mut query_client: CosmosQueryClient<tonic::transport::Channel>,
         address: AccountId,
     ) -> ClientResult<Self> {
         let response = query_client
@@ -74,18 +78,13 @@ impl AccountDataCache {
     }
 }
 
-/// Stateful internal data for the high-level client
-struct MessageClientInner {
-    service_client: CosmosServiceClient<tonic::transport::Channel>,
-    query_client: CosmosQueryClient<tonic::transport::Channel>,
-    account_data: AccountDataCache,
-}
-
 /// High-level wrapper for incident-reporting to Validation Chain.
 #[derive(Clone)]
 pub struct MessageClient {
-    inner: Arc<Mutex<MessageClientInner>>,
+    account_data: Arc<Mutex<AccountDataCache>>,
     config: MessageClientConfig,
+    service_client: CosmosServiceClient<tonic::transport::Channel>,
+    query_client: CosmosQueryClient<tonic::transport::Channel>,
 }
 
 impl MessageClient {
@@ -94,17 +93,14 @@ impl MessageClient {
     pub async fn connect(config: MessageClientConfig) -> ClientResult<Self> {
         let service_client =
             CosmosServiceClient::connect(config.connection.endpoint.clone()).await?;
-        let mut query_client =
-            CosmosQueryClient::connect(config.connection.endpoint.clone()).await?;
-        let account_data = AccountDataCache::fetch(&mut query_client, config.address()).await?;
+        let query_client = CosmosQueryClient::connect(config.connection.endpoint.clone()).await?;
+        let account_data = AccountDataCache::fetch(query_client.clone(), config.address()).await?;
 
         Ok(Self {
-            inner: Arc::new(Mutex::new(MessageClientInner {
-                service_client,
-                query_client,
-                account_data,
-            })),
+            account_data: Arc::new(Mutex::new(account_data)),
             config,
+            service_client,
+            query_client,
         })
     }
 
@@ -185,6 +181,34 @@ impl MessageClient {
         Ok(())
     }
 
+    pub async fn register_rule(
+        &self,
+        rule_id: impl Into<String>,
+        chain: ChainType,
+        content: impl Into<String>,
+        activate_since: chrono::DateTime<Utc>,
+        inactivate_since: chrono::DateTime<Utc>,
+    ) -> ClientResult<()> {
+        let sniffer = self.config.address().to_string();
+
+        self.sign_and_broadcast_txs(vec![MsgRegisterRule {
+            creator: sniffer,
+            rule: Some(RuleRegisterCommandRequestDto {
+                rule_id: rule_id.into(),
+                chain: Some(Chain {
+                    chain_type: chain.into(),
+                }),
+                ipfs_cid: "unknown".to_string(),
+                content: content.into(),
+                activate_since: activate_since.to_rfc3339(),
+                inactivate_since: inactivate_since.to_rfc3339(),
+            }),
+        }])
+        .await?;
+
+        Ok(())
+    }
+
     /// Unlike queries, commands in Cosmos must be signed and published as transactions.
     /// This method handles transaction signing and ordering ( like setting `sequence_number`).
     async fn sign_and_broadcast_txs<T: Message + TypeUrl>(
@@ -199,23 +223,21 @@ impl MessageClient {
 
         let tx_body = builder.finish();
 
-        let mut data = self.inner.lock().await;
+        let mut account_data = self.account_data.lock().await;
 
         for _ in 0..MAX_RETRIES {
             match self
-                .sign_and_broadcast_tx_impl(
-                    tx_body.clone(),
-                    data.account_data,
-                    &mut data.service_client,
-                )
+                .sign_and_broadcast_tx_impl(tx_body.clone(), *account_data)
                 .await
             {
                 Ok(_) => break,
                 Err(err) => {
                     if err.is_incorrect_account_sequence() {
-                        data.account_data =
-                            AccountDataCache::fetch(&mut data.query_client, self.config.address())
-                                .await?;
+                        *account_data = AccountDataCache::fetch(
+                            self.query_client.clone(),
+                            self.config.address(),
+                        )
+                        .await?;
                     } else {
                         error!("Got unknown error from validation chain: {:?}", err);
 
@@ -227,9 +249,9 @@ impl MessageClient {
             tokio::time::sleep(RETRY_SLEEP_TIME).await;
         }
 
-        // Assume our app is a main account user
+        // Assume our app is the only account user
         // Intended to reduce API call rate
-        data.account_data.sequence += 1;
+        account_data.sequence += 1;
 
         Ok(())
     }
@@ -238,7 +260,6 @@ impl MessageClient {
         &self,
         tx_body: Body,
         account_data: AccountDataCache,
-        service_client: &mut CosmosServiceClient<tonic::transport::Channel>,
     ) -> ClientResult<()> {
         let AccountDataCache { number, sequence } = account_data;
         let auth_info = SignerInfo::single_direct(Some(self.config.public_key()), sequence)
@@ -259,7 +280,9 @@ impl MessageClient {
             .sign(self.config.private_key())
             .map_err(ValidationClientError::SignTransaction)?;
 
-        let response = service_client
+        let response = self
+            .service_client
+            .clone()
             .broadcast_tx(BroadcastTxRequest {
                 tx_bytes: tx_raw
                     .to_bytes()
