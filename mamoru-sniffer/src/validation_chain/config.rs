@@ -1,5 +1,5 @@
 use crate::errors::ValidationClientError;
-use crate::from_env;
+use crate::from_env_or_fail;
 use crate::validation_chain::ClientResult;
 use cosmrs::crypto::{secp256k1, PublicKey};
 use cosmrs::tendermint::chain;
@@ -22,7 +22,7 @@ pub struct MessageClientConfig {
 
 impl MessageClientConfig {
     pub fn from_env() -> Self {
-        from_env()
+        from_env_or_fail()
     }
 
     pub fn public_key(&self) -> PublicKey {
@@ -77,7 +77,7 @@ pub struct QueryClientConfig {
 
 impl QueryClientConfig {
     pub fn from_env() -> Self {
-        from_env()
+        from_env_or_fail()
     }
 }
 
@@ -89,7 +89,7 @@ pub struct ConnectionConfig {
 
 impl ConnectionConfig {
     pub fn from_env() -> Self {
-        from_env()
+        from_env_or_fail()
     }
 }
 

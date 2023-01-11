@@ -7,6 +7,7 @@ use mamoru_core::{BlockchainDataCtxBuilder, DataError, Rule};
 #[derive(Debug)]
 pub enum ChainType {
     Sui,
+    Evm,
 }
 
 /// Validates a Rule expression against an empty database.
@@ -16,6 +17,12 @@ pub async fn validate(chain: ChainType, query: &str) -> Result<(), ValidateError
             .empty(mamoru_sui_types::all_tables)
             .expect(
                 "BUG: `BlockchainDataCtxBuilder::new().empty(mamoru_sui_types::all_tables)` fails.",
+            ),
+
+        ChainType::Evm => BlockchainDataCtxBuilder::new()
+            .empty(mamoru_evm_types::all_tables)
+            .expect(
+                "BUG: `BlockchainDataCtxBuilder::new().empty(mamoru_evm_types::all_tables)` fails.",
             ),
     };
 

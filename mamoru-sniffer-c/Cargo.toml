@@ -1,0 +1,18 @@
+[package]
+name = "mamoru-sniffer-c"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["lib"]
+
+[features]
+headers = ["safer-ffi/headers"]
+
+[dependencies]
+chrono = { workspace = true }
+mamoru-evm-types = { path = "../mamoru-evm-types" }
+mamoru-sniffer = { path = "../mamoru-sniffer" }
+safer-ffi = { version = "0.0.10", features = ["log", "proc_macros"] }
+tokio = { workspace = true, features = ["rt-multi-thread"] }
+lazy_static = "1.4.0"

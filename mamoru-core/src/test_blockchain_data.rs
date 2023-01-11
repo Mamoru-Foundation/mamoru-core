@@ -11,54 +11,63 @@ pub fn data_ctx(tx_hash: impl Into<String>) -> BlockchainDataCtx {
     let builder = BlockchainDataCtxBuilder::new();
 
     builder
-        .add_data(TestTransactionBatch::new(vec![TestTransaction {
-            seq: tx_seq,
-            time: now.timestamp(),
-            digest: digest.clone(),
-            gas_used: 42_000,
-        }]))
+        .add_data(
+            TestTransactionBatch::new(vec![TestTransaction {
+                seq: tx_seq,
+                time: now.timestamp(),
+                digest: digest.clone(),
+                gas_used: 42_000,
+            }])
+            .boxed(),
+        )
         .unwrap();
 
     builder
-        .add_data(TestCallTraceBatch::new(vec![
-            TestCallTrace {
-                seq: 0,
-                tx_seq,
-                function: "func1".to_string(),
-            },
-            TestCallTrace {
-                seq: 1,
-                tx_seq,
-                function: "func2".to_string(),
-            },
-        ]))
+        .add_data(
+            TestCallTraceBatch::new(vec![
+                TestCallTrace {
+                    seq: 0,
+                    tx_seq,
+                    function: "func1".to_string(),
+                },
+                TestCallTrace {
+                    seq: 1,
+                    tx_seq,
+                    function: "func2".to_string(),
+                },
+            ])
+            .boxed(),
+        )
         .unwrap();
 
     builder
-        .add_data(TestCallTraceArgBatch::new(vec![
-            TestCallTraceArg {
-                seq: 0,
-                call_trace_seq: 1,
-                arg: ValueData::new(Value::U64(42)).unwrap(),
-            },
-            TestCallTraceArg {
-                seq: 1,
-                call_trace_seq: 1,
-                arg: ValueData::new(Value::Struct(StructValue::new(
-                    "dummy".to_string(),
-                    hashmap! {
-                         "foo".to_string() => Value::U64(42),
-                         "bar".to_string() => Value::String("hello".to_string()),
-                    },
-                )))
-                .unwrap(),
-            },
-            TestCallTraceArg {
-                seq: 2,
-                call_trace_seq: 1,
-                arg: ValueData::new(Value::Bool(false)).unwrap(),
-            },
-        ]))
+        .add_data(
+            TestCallTraceArgBatch::new(vec![
+                TestCallTraceArg {
+                    seq: 0,
+                    call_trace_seq: 1,
+                    arg: ValueData::new(Value::U64(42)).unwrap(),
+                },
+                TestCallTraceArg {
+                    seq: 1,
+                    call_trace_seq: 1,
+                    arg: ValueData::new(Value::Struct(StructValue::new(
+                        "dummy".to_string(),
+                        hashmap! {
+                             "foo".to_string() => Value::U64(42),
+                             "bar".to_string() => Value::String("hello".to_string()),
+                        },
+                    )))
+                    .unwrap(),
+                },
+                TestCallTraceArg {
+                    seq: 2,
+                    call_trace_seq: 1,
+                    arg: ValueData::new(Value::Bool(false)).unwrap(),
+                },
+            ])
+            .boxed(),
+        )
         .unwrap();
 
     builder.finish(format!("{}", tx_seq), digest, now)

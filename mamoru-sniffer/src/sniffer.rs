@@ -34,8 +34,10 @@ pub struct SnifferConfig {
 }
 
 impl SnifferConfig {
-    pub fn from_env() -> Self {
-        from_env()
+    pub fn from_env() -> SnifferResult<Self> {
+        let config = from_env()?;
+
+        Ok(config)
     }
 
     pub fn default_incident_buffer_size() -> usize {
@@ -80,7 +82,7 @@ impl Sniffer {
     /// Reports to Validation Chain if the provided transaction matches
     /// any rule from the internal storage.
     #[tracing::instrument(skip(ctx, self), fields(tx_id = ctx.tx_id(), tx_hash = ctx.tx_hash(), level = "debug"))]
-    pub async fn observe_data(&self, ctx: BlockchainDataCtx) -> SnifferResult<()> {
+    pub async fn observe_data(&self, ctx: BlockchainDataCtx) {
         let matched_rule_ids = self.check_incidents(&ctx).await;
         debug!(len = matched_rule_ids.len(), "Matched rules");
 
@@ -110,8 +112,6 @@ impl Sniffer {
                 }
             }
         }
-
-        Ok(())
     }
 
     /// Checks for matches for each of rules available.

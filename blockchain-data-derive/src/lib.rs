@@ -87,11 +87,15 @@ impl DeriveImpl {
             .unwrap_or_else(|| as_expr("mamoru_core"));
 
         Ok(quote! {
-            pub struct #batch_struct_name(Vec<#struct_name>);
+            pub struct #batch_struct_name(pub Vec<#struct_name>);
 
             impl #batch_struct_name {
                 pub fn new(items: impl IntoIterator<Item = #struct_name>) -> Self {
                     Self(items.into_iter().collect())
+                }
+
+                pub fn boxed(self) -> Box<Self> {
+                    Box::new(self)
                 }
             }
 
@@ -139,7 +143,7 @@ impl DeriveImpl {
         }
 
         Ok(quote! {
-            fn to_record_batch(self) -> Result<#arrow::record_batch::RecordBatch, #arrow::error::ArrowError> {
+            fn to_record_batch(self: Box<Self>) -> Result<#arrow::record_batch::RecordBatch, #arrow::error::ArrowError> {
                 let len = self.0.len();
                 let schema = self.schema();
 

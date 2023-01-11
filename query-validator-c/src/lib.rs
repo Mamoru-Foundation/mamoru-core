@@ -6,6 +6,7 @@ use safer_ffi::prelude::*;
 #[repr(u8)]
 pub enum FfiChainType {
     Sui = 0,
+    Evm = 1,
 }
 
 #[derive_ReprC]
@@ -19,6 +20,7 @@ impl From<FfiChainType> for ChainType {
     fn from(chain: FfiChainType) -> Self {
         match chain {
             FfiChainType::Sui => Self::Sui,
+            FfiChainType::Evm => Self::Evm,
         }
     }
 }
@@ -27,7 +29,7 @@ lazy_static! {
     static ref HANDLE: tokio::runtime::Handle = {
         let runtime = tokio::runtime::Builder::new_current_thread()
             .build()
-            .expect("Failed to init async runtime.");
+            .expect("BUG: Failed to init async runtime.");
 
         runtime.handle().clone()
     };

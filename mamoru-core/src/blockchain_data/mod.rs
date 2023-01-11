@@ -21,7 +21,7 @@ pub trait BlockchainData {
     fn schema(&self) -> Arc<Schema>;
 
     /// Converts the struct data to Arrow data type [`RecordBatch`].
-    fn to_record_batch(self) -> Result<RecordBatch, ArrowError>;
+    fn to_record_batch(self: Box<Self>) -> Result<RecordBatch, ArrowError>;
 }
 
 pub struct BlockchainDataCtxBuilder {
@@ -61,7 +61,7 @@ impl BlockchainDataCtxBuilder {
         })
     }
 
-    pub fn add_data(&self, data: impl BlockchainData) -> Result<(), DataError> {
+    pub fn add_data(&self, data: Box<dyn BlockchainData>) -> Result<(), DataError> {
         let table_name = data.table_name();
         let record_batch = data
             .to_record_batch()

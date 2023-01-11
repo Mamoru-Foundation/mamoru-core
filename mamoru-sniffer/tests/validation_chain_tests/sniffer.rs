@@ -32,10 +32,7 @@ async fn smoke() {
     let incidents = get_incidents(&rule_id).await;
     assert!(incidents.is_empty());
 
-    sniffer
-        .observe_data(data_ctx(tx_hash.clone()))
-        .await
-        .expect("Failed to observe data.");
+    sniffer.observe_data(data_ctx(tx_hash.clone())).await;
 
     retry(|| async {
         let incidents = get_incidents(&rule_id).await;

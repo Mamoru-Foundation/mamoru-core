@@ -8,11 +8,16 @@ pub mod core {
     pub use mamoru_core::*;
 }
 
-fn from_env<T>() -> T
+fn from_env<T>() -> Result<T, envy::Error>
 where
     T: serde::de::DeserializeOwned,
 {
-    envy::prefixed("MAMORU_")
-        .from_env()
-        .expect("Missing environment variables")
+    envy::prefixed("MAMORU_").from_env()
+}
+
+fn from_env_or_fail<T>() -> T
+where
+    T: serde::de::DeserializeOwned,
+{
+    from_env().expect("Missing environment variables")
 }

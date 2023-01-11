@@ -7,7 +7,9 @@ members = [
     "query-validator-c",
     "mamoru-core",
     "mamoru-sui-types",
+    "mamoru-evm-types",
     "mamoru-sniffer",
+    "mamoru-sniffer-c",
 ]
 
 [workspace.dependencies]

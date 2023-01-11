@@ -6,10 +6,13 @@ use thiserror::Error;
 #[derive(Error, Debug)]
 pub enum SnifferError {
     #[error(transparent)]
-    ClientError(#[from] ValidationClientError),
+    Client(#[from] ValidationClientError),
 
     #[error("Failed to parse Rule")]
-    RuleParseError(#[from] RuleParseError),
+    RuleParse(#[from] RuleParseError),
+
+    #[error("Failed to parse Config")]
+    Config(#[from] envy::Error),
 }
 
 #[derive(Error, Debug)]

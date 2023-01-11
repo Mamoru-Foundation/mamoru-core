@@ -17,6 +17,9 @@ pull-proto-dependencies:
 
 test:
 	cargo test --all-features --workspace
+	
+headers:
+	cargo test --features headers -- --exact generate_headers --nocapture
 
 validation-chain-test:
 	RUST_LOG=$(RUST_LOG) \

@@ -1,17 +1,11 @@
 [package]
-name = "query-validator"
+name = "mamoru-evm-types"
 version = "0.1.0"
 edition = "2021"
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-chrono = { workspace = true }
+blockchain-data-macro = { path = "../blockchain-data-macro" }
 datafusion = { workspace = true }
 mamoru-core = { path = "../mamoru-core" }
-thiserror = "1.0"
-
-mamoru-evm-types = { path = "../mamoru-evm-types" }
-mamoru-sui-types = { path = "../mamoru-sui-types" }
-
-[dev-dependencies]
-tokio = { workspace = true }

@@ -88,4 +88,12 @@ impl StructValue {
     pub fn new(ty: String, fields: HashMap<String, Value>) -> Self {
         Self { ty, fields }
     }
+
+    pub fn add_field(&mut self, key: String, value: Value) -> Option<Value> {
+        self.fields.insert(key, value)
+    }
+
+    pub fn field_exist(&self, key: &str) -> bool {
+        self.fields.get(key).is_some()
+    }
 }
