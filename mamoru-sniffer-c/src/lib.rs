@@ -54,7 +54,7 @@ fn sniffer_result_get_sniffer(
 ) -> Option<repr_c::Box<FfiSniffer>> {
     let result = result.into();
 
-    result.data.map(|sniffer| repr_c::Box::new(sniffer))
+    result.data.map(repr_c::Box::new)
 }
 
 /// Frees `data` argument.

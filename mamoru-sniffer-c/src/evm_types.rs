@@ -50,7 +50,5 @@ fn transaction_batch_finish(
 ) -> repr_c::Box<FfiBlockchainData> {
     let inner = object.into().inner;
 
-    repr_c::Box::new(FfiBlockchainData {
-        inner,
-    })
+    repr_c::Box::new(FfiBlockchainData { inner })
 }
